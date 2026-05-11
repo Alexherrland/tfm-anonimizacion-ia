@@ -40,6 +40,7 @@ adversarial mediante MIA (`adversarial-robustness-toolbox`).
 ├── results/                   Tablas (CSV) y figuras (PNG) generadas
 ├── docs/                      Material complementario
 ├── requirements.txt
+├── TFM_Memory.pdf             The Memory of the TFM in pdf format
 └── .gitignore
 ```
 
