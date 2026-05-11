@@ -1,0 +1,96 @@
+"""Aplicación de Privacidad Diferencial mediante diffprivlib."""
+
+from pathlib import Path
+from typing import Dict, List
+
+import numpy as np
+import pandas as pd
+from sklearn.metrics import accuracy_score, f1_score
+from sklearn.preprocessing import StandardScaler
+
+from src import config
+from src.models import build_dp_models
+from src.preprocessing import (
+    binarize_target,
+    joint_ohe,
+    percentile_bounds,
+    percentile_data_norm,
+)
+
+
+def sweep_dp(
+    X_train_scaled: np.ndarray,
+    X_test_scaled: np.ndarray,
+    y_train,
+    y_test,
+    data_norm: float,
+    bounds,
+    epsilons: List[float] = None,
+    n_repetitions: int = None,
+) -> pd.DataFrame:
+    """Ejecuta el barrido completo de ε × repeticiones × 2 modelos.
+
+    Devuelve un DataFrame con una fila por (modelo, epsilon, repetición)
+    sobre el que se pueden calcular media y desviación típica.
+    """
+    epsilons = epsilons or config.EPSILON_VALUES
+    n_repetitions = n_repetitions or config.N_REPETITIONS_DP
+
+    rows: List[Dict] = []
+    for epsilon in epsilons:
+        for rep in range(n_repetitions):
+            seed = config.RANDOM_STATE + rep
+            for model_name, model in build_dp_models(epsilon, data_norm, bounds, seed).items():
+                model.fit(X_train_scaled, y_train)
+                predictions = model.predict(X_test_scaled)
+                rows.append({
+                    "modelo": model_name,
+                    "epsilon": epsilon,
+                    "rep": rep,
+                    "Accuracy": accuracy_score(y_test, predictions),
+                    "F1-Score": f1_score(y_test, predictions, average="weighted"),
+                })
+    return pd.DataFrame(rows)
+
+
+def dp_on_kanonimized(
+    filepath_kanon: Path,
+    df_test_raw: pd.DataFrame,
+    epsilons: List[float] = None,
+    n_repetitions: int = None,
+) -> pd.DataFrame:
+    """Aplica DP sobre un conjunto previamente k-anonimizado.
+
+    Replica el sweep DP estándar pero sobre el train procedente de
+    ARX (filas suprimidas eliminadas). Permite cuantificar el coste
+    de utilidad de la defensa en profundidad k-anon + DP.
+    """
+    epsilons = epsilons or [0.1, 1.0, 10.0]
+    n_repetitions = n_repetitions or config.N_REPETITIONS_DP
+
+    df_anon = pd.read_csv(filepath_kanon, sep=";")
+    df_anon = df_anon[~df_anon["race"].astype(str).str.fullmatch(r"\*")]
+
+    y_anon = binarize_target(df_anon[config.TARGET_COLUMN]).values
+    X_anon = df_anon.drop(columns=[config.TARGET_COLUMN])
+    X_test = df_test_raw.drop(columns=[config.TARGET_COLUMN])
+
+    X_anon_array, X_test_array = joint_ohe(X_anon, X_test)
+    scaler = StandardScaler().fit(X_anon_array)
+    X_anon_scaled = scaler.transform(X_anon_array)
+    X_test_scaled = scaler.transform(X_test_array)
+
+    data_norm = percentile_data_norm(X_anon_scaled, percentile=95)
+    bounds = percentile_bounds(X_anon_scaled)
+    y_test = binarize_target(df_test_raw[config.TARGET_COLUMN]).values
+
+    return sweep_dp(
+        X_anon_scaled,
+        X_test_scaled,
+        y_anon,
+        y_test,
+        data_norm,
+        bounds,
+        epsilons=epsilons,
+        n_repetitions=n_repetitions,
+    )
