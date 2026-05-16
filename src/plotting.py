@@ -104,6 +104,141 @@ def plot_fairness_curves(
     plt.close()
 
 
+def plot_ldiv_degradation(df_results: pd.DataFrame, baseline_k5: pd.DataFrame, output_path: Path) -> None:
+    """Curva de degradación de Accuracy/F1 a lo largo del barrido de l (k=5 fijo)."""
+    fig, axes = plt.subplots(2, 1, figsize=(10, 11), sharex=True)
+    ldf = df_results[df_results["tipo"] == "l_div"].copy()
+    base = baseline_k5.set_index("Modelo")
+
+    for model in df_results["Modelo"].unique():
+        subset = ldf[ldf["Modelo"] == model].sort_values("l")
+        base_acc = base.loc[model, "Accuracy"]
+        base_f1 = base.loc[model, "F1-Score"]
+        axes[0].plot(subset["l"], subset["Accuracy"], marker="o", linewidth=2, markersize=9, label=model)
+        axes[0].axhline(base_acc, linestyle="--", alpha=0.4, linewidth=1)
+        axes[1].plot(subset["l"], subset["F1-Score"], marker="o", linewidth=2, markersize=9, label=model)
+        axes[1].axhline(base_f1, linestyle="--", alpha=0.4, linewidth=1)
+
+    for ax in axes:
+        ax.set_xticks(config.L_VALUES)
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=10, loc="lower left")
+    axes[0].set_ylabel("Accuracy")
+    axes[0].set_title("Accuracy vs $l$ (con $k=5$ fijo)")
+    axes[1].set_ylabel("F1-Score (ponderado)")
+    axes[1].set_xlabel("$l$ (diversidad mínima en SA)")
+    axes[1].set_title("F1-Score vs $l$")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close()
+
+
+def plot_tclos_degradation(df_results: pd.DataFrame, baseline_k5: pd.DataFrame, output_path: Path) -> None:
+    """Curva de degradación de Accuracy/F1 a lo largo del barrido de t (k=5 fijo)."""
+    fig, axes = plt.subplots(2, 1, figsize=(10, 11), sharex=True)
+    tdf = df_results[df_results["tipo"] == "t_clos"].copy()
+    base = baseline_k5.set_index("Modelo")
+
+    for model in df_results["Modelo"].unique():
+        subset = tdf[tdf["Modelo"] == model].sort_values("t", ascending=False)
+        base_acc = base.loc[model, "Accuracy"]
+        base_f1 = base.loc[model, "F1-Score"]
+        axes[0].plot(subset["t"], subset["Accuracy"], marker="o", linewidth=2, markersize=9, label=model)
+        axes[0].axhline(base_acc, linestyle="--", alpha=0.4, linewidth=1)
+        axes[1].plot(subset["t"], subset["F1-Score"], marker="o", linewidth=2, markersize=9, label=model)
+        axes[1].axhline(base_f1, linestyle="--", alpha=0.4, linewidth=1)
+
+    for ax in axes:
+        ax.set_xticks(config.T_VALUES)
+        ax.invert_xaxis()
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=10, loc="lower right")
+    axes[0].set_ylabel("Accuracy")
+    axes[0].set_title(r"Accuracy vs $t$ (con $k=5$ fijo, $\downarrow$ más privacidad)")
+    axes[1].set_ylabel("F1-Score (ponderado)")
+    axes[1].set_xlabel("$t$ (umbral t-closeness)")
+    axes[1].set_title("F1-Score vs $t$")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close()
+
+
+def plot_triples_vs_singles(df_results: pd.DataFrame, baseline_k5: pd.DataFrame, output_path: Path) -> None:
+    """Compara las cuatro triples con sus contrapartidas t-closeness sola sobre LR.
+
+    Visualiza la validación empírica de Li, Li y Venkatasubramanian (2007):
+    para una elección de t suficientemente estricta, t-closeness ya implica
+    una forma de l-diversidad, y la triple combinación colapsa a la single.
+    """
+    fig, ax = plt.subplots(figsize=(11, 7))
+    lr_t = df_results[(df_results["tipo"] == "t_clos") & (df_results["Modelo"] == "Regresión Logística")].sort_values("t", ascending=False)
+    lr_triple = df_results[(df_results["tipo"].str.startswith("triple_")) & (df_results["Modelo"] == "Regresión Logística")].copy()
+    lr_triple = lr_triple.sort_values("t", ascending=False)
+
+    ax.plot(lr_t["t"], lr_t["Accuracy"], marker="o", linewidth=2.5, markersize=12,
+            color="#1f77b4", label="t-closeness sola")
+    ax.scatter(lr_triple["t"], lr_triple["Accuracy"], s=200, marker="s",
+               facecolor="none", edgecolor="#d62728", linewidth=2.5, label="Triple ($k+l+t$)")
+
+    labels = {"triple_soft": "Soft", "triple_medium": "Medium",
+              "triple_hard": "Hard", "triple_extreme": "Extreme"}
+    for _, row in lr_triple.iterrows():
+        annotation = f"{labels[row['tipo']]}\n($l={int(row['l'])}$)"
+        ax.annotate(annotation, (row["t"], row["Accuracy"]),
+                    xytext=(8, 8), textcoords="offset points", fontsize=9)
+
+    base_acc = float(baseline_k5[baseline_k5["Modelo"] == "Regresión Logística"]["Accuracy"].iloc[0])
+    ax.axhline(base_acc, color="gray", linestyle="--", alpha=0.6, label=f"Baseline $k=5$ ({base_acc:.4f})")
+    ax.set_xlabel("$t$ (umbral t-closeness)")
+    ax.set_ylabel("Accuracy (Regresión Logística)")
+    ax.set_title("Convergencia empírica: triples colapsan a t-closeness sola excepto Hard")
+    ax.invert_xaxis()
+    ax.grid(alpha=0.3)
+    ax.legend(loc="upper right")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close()
+
+
+def plot_fairness_ldiv_tclos(df_fairness: pd.DataFrame, output_path: Path) -> None:
+    """Paneles apilados de fairness para los sweeps de l-diversidad y t-closeness."""
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 12), sharey=True)
+
+    ldf = df_fairness[df_fairness["tipo"].isin(["k_solo", "l_div"])].copy()
+    ldf["l_eff"] = ldf.apply(lambda r: 1 if r["tipo"] == "k_solo" else int(r["l"]), axis=1)
+    for race_value in ldf["race"].unique():
+        subset = ldf[ldf["race"] == race_value].sort_values("l_eff")
+        n_value = int(subset["n"].iloc[0])
+        ax1.plot(subset["l_eff"], subset["Accuracy"], marker="o", linewidth=2, markersize=9,
+                 label=f"{race_value} ($n={n_value}$)")
+    ax1.set_xticks([1] + config.L_VALUES)
+    ax1.set_xticklabels(["$k=5$\nsolo"] + [f"$l={l}$" for l in config.L_VALUES])
+    ax1.set_ylabel("Accuracy por subgrupo (LR)")
+    ax1.set_title("Equidad bajo $l$-diversidad")
+    ax1.legend(fontsize=9, ncol=2, loc="lower right")
+    ax1.grid(alpha=0.3)
+
+    tdf = df_fairness[df_fairness["tipo"].isin(["k_solo", "t_clos"])].copy()
+    tdf["t_eff"] = tdf.apply(lambda r: 1.0 if r["tipo"] == "k_solo" else r["t"], axis=1)
+    for race_value in tdf["race"].unique():
+        subset = tdf[tdf["race"] == race_value].sort_values("t_eff", ascending=False)
+        n_value = int(subset["n"].iloc[0])
+        ax2.plot(subset["t_eff"], subset["Accuracy"], marker="o", linewidth=2, markersize=9,
+                 label=f"{race_value} ($n={n_value}$)")
+    ax2.set_xticks([1.0] + config.T_VALUES)
+    ax2.set_xticklabels(["$k=5$\nsolo"] + [str(t).replace(".", ",") for t in config.T_VALUES])
+    ax2.invert_xaxis()
+    ax2.set_xlabel(r"$t$ (umbral t-closeness, $\downarrow$ más privacidad)")
+    ax2.set_ylabel("Accuracy por subgrupo (LR)")
+    ax2.set_title("Equidad bajo $t$-closeness")
+    ax2.legend(fontsize=9, ncol=2, loc="lower right")
+    ax2.grid(alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close()
+
+
 def plot_mia_bars(df_mia: pd.DataFrame, output_path: Path) -> None:
     """Gráfico de barras con Attack Accuracy y Advantage por escenario."""
     fig, ax = plt.subplots(figsize=(9, 5.5))

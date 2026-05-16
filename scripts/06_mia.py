@@ -62,6 +62,10 @@ def _build_kanon_arrays(filepath_kanon, df_test_raw):
 
 def main() -> None:
     config.RESULTS_DIR.mkdir(exist_ok=True)
+    config.RESULTS_KANON_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_DP_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_LDIV_TCLOS_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_MIA_DIR.mkdir(parents=True, exist_ok=True)
 
     df = load_clean_reduced()
     X_train, X_test, y_train, y_test = stratified_split(df)
@@ -85,7 +89,7 @@ def main() -> None:
 
     # k=10 y k=50
     for k_value in (10, 50):
-        filepath = config.DATA_DIR / f"arx_output_k{k_value}.csv"
+        filepath = config.ARX_OUTPUTS_DIR / f"arx_output_k{k_value}.csv"
         if not filepath.exists():
             print(f"Aviso: no se encuentra {filepath}, se omite k={k_value}")
             continue
@@ -101,8 +105,8 @@ def main() -> None:
             **run_mia_blackbox(lr_k, Xa, ya, Xt, y_test.values),
         })
 
-    # DP ε=0.1 y ε=10
-    for epsilon in (0.1, 10.0):
+    # DP ε=0.1, ε=1 y ε=10
+    for epsilon in (0.1, 1.0, 10.0):
         lr_dp = _fit_lr_dp(X_train_scaled, y_train.values, epsilon, data_norm)
         results.append({
             "escenario": f"LR · DP ε={epsilon}",
@@ -110,7 +114,7 @@ def main() -> None:
         })
 
     df_mia = pd.DataFrame(results)
-    df_mia.to_csv(config.RESULTS_DIR / "mia_results.csv", index=False)
+    df_mia.to_csv(config.RESULTS_MIA_DIR / "mia_results.csv", index=False)
     plot_mia_bars(df_mia, config.RESULTS_DIR / "mia_results.png")
     print(df_mia.round(4).to_string(index=False))
 

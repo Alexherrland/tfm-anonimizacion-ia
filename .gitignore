@@ -23,6 +23,18 @@ results/*.csv
 results/*.png
 *.log
 
+# Datasets de ARX: SE VERSIONAN para que el notebook en Colab funcione
+# end-to-end sin necesidad de ejecutar ARX Desktop manualmente.
+# Si vuelves a excluirlos, descomenta:
+# arx_kit/inputs/arx_train.csv
+# arx_kit/inputs/arx_test.csv
+# arx_kit/inputs/tfm-arx_k2.deid
+# arx_kit/arx_outputs/*.csv
+
+# Archivos temporales / de regeneración
+_test_*.csv
+_repo/
+
 # Jupyter
 .ipynb_checkpoints/
 

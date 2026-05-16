@@ -1,6 +1,7 @@
 """División train/test, codificación One-Hot y estandarización."""
 
-from typing import Tuple
+from pathlib import Path
+from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -8,6 +9,33 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 from src import config
+
+
+def load_baselines(csv_path: Path = None) -> Dict[str, Tuple[float, float]]:
+    """Lee los baselines (k=0) de `resultados_kanon.csv` y devuelve un dict.
+
+    Devuelve {modelo: (accuracy, f1_score)} para cada modelo del baseline,
+    redondeado a 4 decimales (consistente con la precisión de las tablas
+    de la memoria). Si el CSV no existe, lanza FileNotFoundError con un
+    mensaje claro.
+
+    Esta función centraliza el acceso a los baselines y evita que los
+    valores aparezcan hardcoded en múltiples scripts.
+    """
+    if csv_path is None:
+        csv_path = config.RESULTS_KANON_DIR / "resultados_kanon.csv"
+    csv_path = Path(csv_path)
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"No se encuentra {csv_path}. Ejecuta primero `python scripts/03_evaluate_kanon.py` "
+            "para generar los baselines."
+        )
+    df = pd.read_csv(csv_path)
+    baseline = df[df["k"] == 0]
+    return {
+        row["Modelo"]: (round(float(row["Accuracy"]), 4), round(float(row["F1-Score"]), 4))
+        for _, row in baseline.iterrows()
+    }
 
 
 def binarize_target(series: pd.Series) -> pd.Series:
@@ -40,12 +68,64 @@ def fit_scaler(X_train: pd.DataFrame) -> StandardScaler:
     return StandardScaler().fit(X_train)
 
 
+def mask_suppressed_rows(df: pd.DataFrame, qids: list = None) -> pd.Series:
+    """Identifica las filas suprimidas por ARX.
+
+    ARX exporta los registros suprimidos con todos los QID a `*`
+    (generalización máxima compartida con la operación de supresión
+    explícita). Esta función comprueba que TODOS los QIDs estén a `*`,
+    en lugar de mirar sólo `race` como hace la heurística histórica.
+
+    Empíricamente, sobre los CSVs de este TFM, la heurística "race==*"
+    coincide al 100\\% con esta verificación más completa (la jerarquía
+    de `race` sólo alcanza `*` en el nivel máximo, que es justamente el
+    nivel de supresión); pero al verificar todas las QIDs el código
+    queda blindado frente a futuros cambios en las jerarquías.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Conjunto exportado por ARX (separador `;`).
+    qids : list, optional
+        Lista de columnas QID a comprobar. Si es None se usa el conjunto
+        canónico del TFM (race, gender, age, admission_type_id,
+        time_in_hospital).
+    """
+    if qids is None:
+        qids = ["race", "gender", "age", "admission_type_id", "time_in_hospital"]
+    available = [c for c in qids if c in df.columns]
+    return df[available].astype(str).eq("*").all(axis=1)
+
+
 def joint_ohe(X_anon: pd.DataFrame, X_test_raw: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
     """Aplica One-Hot Encoding conjunto sobre la unión train_anon ∪ test.
 
     Garantiza un column space idéntico entre el conjunto anonimizado
     y el conjunto de prueba en claro. Necesario para evaluar modelos
     entrenados sobre datos generalizados frente a datos originales.
+
+    Justificación metodológica
+    --------------------------
+    Esta función concatena train (anonimizado) y test (en claro) antes del OHE.
+    A primera vista puede parecer *data leakage* informativo, pero NO lo es:
+
+    1. El OHE es una operación libre de parámetros estadísticos. No aprende
+       medias, varianzas ni etiquetas: solo determina el conjunto de columnas.
+    2. El motivo del OHE conjunto es estructural: tras la generalización ARX
+       el train contiene valores agregados (ej. age=`[40-60)`) mientras que
+       el test conserva valores originales (ej. age=`[40-50)`). Sin un OHE
+       compartido, los espacios de columnas son incompatibles y el modelo
+       entrenado no podría puntuar el test.
+    3. Las columnas exclusivas del test (no presentes en train tras la
+       generalización) quedan implícitamente a peso cero en cualquier modelo
+       lineal: el algoritmo no ve esos features durante el fit. No hay
+       transferencia de información estadística.
+    4. La alternativa rigurosa sería aplicar las mismas jerarquías ARX al
+       test antes del OHE, lo que cambia el experimento (test también
+       anonimizado, evaluación in-distribution en lugar de out-of-distribution
+       respecto a la generalización).
+
+    Se documenta esta decisión para que sea reproducible y auditable.
     """
     n_anon = len(X_anon)
     stacked = pd.concat([X_anon, X_test_raw], ignore_index=True)

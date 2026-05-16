@@ -1,7 +1,8 @@
 """Fase 4 — Barrido de Privacidad Diferencial con diffprivlib.
 
-Ejecuta ε ∈ {0.1, 0.5, 1, 5, 10} con cinco repeticiones por punto
-sobre los modelos de Regresión Logística y Naive Bayes Gaussian.
+Ejecuta ε ∈ {0.1, 0.5, 1, 5, 10} con veinte repeticiones por punto
+(semillas dispersas, ver config.DP_SEEDS) sobre los modelos de
+Regresión Logística y Naive Bayes Gaussian.
 
 Uso:
     python scripts/04_dp_sweep.py
@@ -16,19 +17,19 @@ from src.fairness import fairness_per_race_dp
 from src.plotting import plot_dp_degradation, plot_fairness_curves
 from src.preprocessing import (
     fit_scaler,
+    load_baselines,
     percentile_bounds,
     percentile_data_norm,
     stratified_split,
 )
 
-BASELINES_FOR_PLOTS = {
-    "Regresión Logística":    (0.6178, 0.6159),
-    "Naive Bayes (Gaussian)": (0.5912, 0.5599),
-}
-
 
 def main() -> None:
     config.RESULTS_DIR.mkdir(exist_ok=True)
+    config.RESULTS_KANON_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_DP_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_LDIV_TCLOS_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_MIA_DIR.mkdir(parents=True, exist_ok=True)
 
     df = load_clean_reduced()
     X_train, X_test, y_train, y_test = stratified_split(df)
@@ -49,7 +50,7 @@ def main() -> None:
         data_norm=data_norm,
         bounds=bounds,
     )
-    df_dp.to_csv(config.RESULTS_DIR / "resultados_dp.csv", index=False)
+    df_dp.to_csv(config.RESULTS_DP_DIR / "resultados_dp.csv", index=False)
 
     aggregated = df_dp.groupby(["modelo", "epsilon"]).agg(
         Acc_mean=("Accuracy", "mean"), Acc_std=("Accuracy", "std"),
@@ -60,7 +61,7 @@ def main() -> None:
 
     plot_dp_degradation(
         df_results_aggregated=aggregated,
-        baselines=BASELINES_FOR_PLOTS,
+        baselines=load_baselines(),
         output_path=config.RESULTS_DIR / "comparativa_dp.png",
     )
 
@@ -74,13 +75,13 @@ def main() -> None:
         races_test=df_test_raw["race"].values,
         data_norm=data_norm,
     )
-    df_fairness.to_csv(config.RESULTS_DIR / "fairness_dp.csv", index=False)
+    df_fairness.to_csv(config.RESULTS_DP_DIR / "fairness_dp.csv", index=False)
     plot_fairness_curves(
         df_fairness,
         x_column="epsilon",
         x_label=r"$\epsilon$",
         output_path=config.RESULTS_DIR / "fairness_dp.png",
-        title=r"Disparidad por subgrupo race en LR-DP (mean$\pm$std, n=5)",
+        title=r"Disparidad por subgrupo race en LR-DP (mean$\pm$std, n=20)",
     )
 
 

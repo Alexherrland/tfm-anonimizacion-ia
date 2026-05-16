@@ -20,6 +20,10 @@ from src.preprocessing import stratified_split
 
 def main() -> None:
     config.RESULTS_DIR.mkdir(exist_ok=True)
+    config.RESULTS_KANON_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_DP_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_LDIV_TCLOS_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_MIA_DIR.mkdir(parents=True, exist_ok=True)
 
     df = load_clean_reduced()
     X_train, X_test, _, _ = stratified_split(df)
@@ -30,33 +34,33 @@ def main() -> None:
         df_test_raw[column] = df_test_raw[column].astype(str)
 
     # Tabla de utilidad por modelo y nivel de k
-    df_baseline = pd.read_csv(config.RESULTS_DIR / "baseline.csv")
+    df_baseline = pd.read_csv(config.RESULTS_KANON_DIR / "baseline.csv")
     df_baseline = df_baseline.assign(pct_suprimido=0,
                                        filas_efectivas=len(X_train),
                                        columnas_OHE=X_train.shape[1])
     results = [df_baseline]
 
     for k in config.K_VALUES:
-        filepath = config.DATA_DIR / f"arx_output_k{k}.csv"
+        filepath = config.ARX_OUTPUTS_DIR / f"arx_output_k{k}.csv"
         if filepath.exists():
             results.append(evaluate_kanon(filepath, k, df_test_raw))
         else:
             print(f"Aviso: no se encuentra {filepath}, se omite k={k}")
 
     df_full = pd.concat(results, ignore_index=True)
-    df_full.to_csv(config.RESULTS_DIR / "resultados_kanon.csv", index=False)
+    df_full.to_csv(config.RESULTS_KANON_DIR / "resultados_kanon.csv", index=False)
     plot_kanon_degradation(df_full, config.RESULTS_DIR / "comparativa_kanon.png")
     print("Tabla de utilidad guardada en resultados_kanon.csv")
 
     # Análisis de fairness por raza
     fairness_partes = [fairness_per_race_kanon(None, 0, df_train_raw, df_test_raw)]
     for k in config.K_VALUES:
-        filepath = config.DATA_DIR / f"arx_output_k{k}.csv"
+        filepath = config.ARX_OUTPUTS_DIR / f"arx_output_k{k}.csv"
         if filepath.exists():
             fairness_partes.append(fairness_per_race_kanon(filepath, k, df_train_raw, df_test_raw))
 
     df_fairness = pd.concat(fairness_partes, ignore_index=True)
-    df_fairness.to_csv(config.RESULTS_DIR / "fairness_kanon.csv", index=False)
+    df_fairness.to_csv(config.RESULTS_KANON_DIR / "fairness_kanon.csv", index=False)
     plot_fairness_curves(
         df_fairness,
         x_column="k",

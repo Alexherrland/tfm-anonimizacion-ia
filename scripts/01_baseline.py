@@ -18,6 +18,10 @@ from src.preprocessing import binarize_target, fit_scaler, stratified_split
 
 def main() -> None:
     config.RESULTS_DIR.mkdir(exist_ok=True)
+    config.RESULTS_KANON_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_DP_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_LDIV_TCLOS_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_MIA_DIR.mkdir(parents=True, exist_ok=True)
 
     df = load_clean_reduced()
     print(f"Dataset tras limpieza y reducción: {df.shape}")
@@ -39,7 +43,7 @@ def main() -> None:
         })
 
     df_baseline = pd.DataFrame(rows).sort_values("F1-Score", ascending=False)
-    output_path = config.RESULTS_DIR / "baseline.csv"
+    output_path = config.RESULTS_KANON_DIR / "baseline.csv"
     df_baseline.to_csv(output_path, index=False)
     print("\nBaseline:")
     print(df_baseline.round(4).to_string(index=False))

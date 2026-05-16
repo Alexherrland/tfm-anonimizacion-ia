@@ -19,6 +19,7 @@ from src.preprocessing import (
     binarize_target,
     fit_scaler,
     joint_ohe,
+    load_baselines,
     stratified_split,
 )
 from src.statistical_tests import build_mcnemar_table, build_wilcoxon_table
@@ -26,6 +27,10 @@ from src.statistical_tests import build_mcnemar_table, build_wilcoxon_table
 
 def main() -> None:
     config.RESULTS_DIR.mkdir(exist_ok=True)
+    config.RESULTS_KANON_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_DP_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_LDIV_TCLOS_DIR.mkdir(parents=True, exist_ok=True)
+    config.RESULTS_MIA_DIR.mkdir(parents=True, exist_ok=True)
 
     df = load_clean_reduced()
     X_train, X_test, y_train, y_test = stratified_split(df)
@@ -45,7 +50,7 @@ def main() -> None:
     # Predicciones por modelo y nivel de k
     anonymized_predictions = {}
     for k_value in config.K_VALUES:
-        filepath = config.DATA_DIR / f"arx_output_k{k_value}.csv"
+        filepath = config.ARX_OUTPUTS_DIR / f"arx_output_k{k_value}.csv"
         if not filepath.exists():
             continue
         df_anon = pd.read_csv(filepath, sep=";")
@@ -64,20 +69,19 @@ def main() -> None:
         anonymized_predictions=anonymized_predictions,
         y_test=y_test.values,
     )
-    df_mcnemar.to_csv(config.RESULTS_DIR / "mcnemar_kanon.csv", index=False)
+    df_mcnemar.to_csv(config.RESULTS_KANON_DIR / "mcnemar_kanon.csv", index=False)
     print("McNemar (baseline vs k-anon):")
     print(df_mcnemar.round(4).to_string(index=False))
 
     # Test de Wilcoxon sobre los resultados DP previamente guardados
-    dp_path = config.RESULTS_DIR / "resultados_dp.csv"
+    dp_path = config.RESULTS_DP_DIR / "resultados_dp.csv"
     if dp_path.exists():
         df_dp = pd.read_csv(dp_path)
-        baselines = {
-            "Regresión Logística": 0.6178,
-            "Naive Bayes (Gaussian)": 0.5912,
-        }
+        # Baselines leídos de resultados_kanon.csv (k=0) — fuente única de verdad
+        baselines_full = load_baselines()
+        baselines = {model: acc for model, (acc, _) in baselines_full.items()}
         df_wilcoxon = build_wilcoxon_table(df_dp, baselines)
-        df_wilcoxon.to_csv(config.RESULTS_DIR / "wilcoxon_dp.csv", index=False)
+        df_wilcoxon.to_csv(config.RESULTS_DP_DIR / "wilcoxon_dp.csv", index=False)
         print("\nWilcoxon (DP vs baseline):")
         print(df_wilcoxon.round(4).to_string(index=False))
     else:

@@ -84,13 +84,14 @@ def fairness_per_race_dp(
     n_repetitions = n_repetitions or config.N_REPETITIONS_DP
 
     rows: List[Dict] = []
+    seeds = config.DP_SEEDS[:n_repetitions]
     for epsilon in epsilons:
-        for rep in range(n_repetitions):
+        for rep, seed in enumerate(seeds):
             model = dpm.LogisticRegression(
                 epsilon=epsilon,
                 data_norm=data_norm,
                 max_iter=100,
-                random_state=config.RANDOM_STATE + rep,
+                random_state=seed,
             )
             model.fit(X_train_scaled, y_train)
             predictions = model.predict(X_test_scaled)

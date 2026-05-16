@@ -35,11 +35,12 @@ def sweep_dp(
     """
     epsilons = epsilons or config.EPSILON_VALUES
     n_repetitions = n_repetitions or config.N_REPETITIONS_DP
+    # Semillas dispersas (no consecutivas) para evitar correlaciones residuales del PRNG.
+    seeds = config.DP_SEEDS[:n_repetitions]
 
     rows: List[Dict] = []
     for epsilon in epsilons:
-        for rep in range(n_repetitions):
-            seed = config.RANDOM_STATE + rep
+        for rep, seed in enumerate(seeds):
             for model_name, model in build_dp_models(epsilon, data_norm, bounds, seed).items():
                 model.fit(X_train_scaled, y_train)
                 predictions = model.predict(X_test_scaled)
@@ -47,6 +48,7 @@ def sweep_dp(
                     "modelo": model_name,
                     "epsilon": epsilon,
                     "rep": rep,
+                    "seed": seed,
                     "Accuracy": accuracy_score(y_test, predictions),
                     "F1-Score": f1_score(y_test, predictions, average="weighted"),
                 })
